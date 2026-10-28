@@ -12,7 +12,7 @@ export const Hero = () => {
   const [banners, setBanners] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('https://lovely-otters-invent.loca.lt/api/banners')
+    fetch('https://great-worms-end.loca.lt/api/banners')
       .then((res) => res.json())
       .then((data) => setBanners(data))
       .catch((err) => console.error('Помилка завантаження банерів:', err));
@@ -58,7 +58,7 @@ export const Hero = () => {
         </div>
 
         <div className="w-1/2 h-full">
-          <img src={`https://lovely-otters-invent.loca.lt/api/image/${currentSlide.image}`} alt="" className="w-full h-full object-cover" />
+          <img src={`https://great-worms-end.loca.lt/api/image/${currentSlide.image}`} alt="" className="w-full h-full object-cover" />
         </div>
 
         <button

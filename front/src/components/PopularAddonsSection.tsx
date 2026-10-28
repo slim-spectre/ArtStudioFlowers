@@ -11,7 +11,7 @@ export const PopularAddonsSection = ({ handleAddAddon }: { handleAddAddon: (item
   
 
   useEffect(() => {
-    fetch('https://lovely-otters-invent.loca.lt/api/addons')
+    fetch('https://great-worms-end.loca.lt/api/addons')
       .then((res) => res.json())
       .then((data) => setAddons(data));
   }, []);
@@ -56,7 +56,7 @@ export const PopularAddonsSection = ({ handleAddAddon }: { handleAddAddon: (item
           >
             <div className="w-full aspect-square bg-gradient-to-b from-white to-[#F2C2D8]/40 border-b border-[#F1569E] flex items-center justify-center">
               <img
-                src={`https://lovely-otters-invent.loca.lt/api/image/${addon.image}`}
+                src={`https://great-worms-end.loca.lt/api/image/${addon.image}`}
                 alt={getLocalizedName(addon.name, language)}
                 className="w-full h-full object-cover"
               />

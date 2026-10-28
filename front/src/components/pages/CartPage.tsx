@@ -42,7 +42,7 @@ export const CartPage = () => {
               >
                 <div className="w-[85px] h-full shrink-0">
                   <img
-                    src={`https://lovely-otters-invent.loca.lt/api/image/${item.image}`}
+                    src={`https://great-worms-end.loca.lt/api/image/${item.image}`}
                     alt={item.name}
                     className="w-full h-full object-cover"
                   />
