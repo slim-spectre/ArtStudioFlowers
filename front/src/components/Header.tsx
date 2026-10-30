@@ -101,9 +101,9 @@ export const Header = () => {
         </button>
       </nav>
 
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-2 shrink-0">
         <div className="relative">
-          <button onClick={() => setIsLangOpen(!isLangOpen)} className="flex gap-1 items-center cursor-pointer p-1">
+          <button onClick={() => setIsLangOpen(!isLangOpen)} className="flex gap-0.5 items-center cursor-pointer p-1">
             <img
               src="/arrowDown.png"
               className={`w-[14px] h-[8px] object-contain transition-transform ${isLangOpen ? 'rotate-180' : ''}`}
