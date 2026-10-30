@@ -69,7 +69,7 @@ export const Header = () => {
         }}
         className="cursor-pointer absolute left-1/2 -translate-x-1/2 md:static md:translate-x-0"
       >
-        <p className="text-[#AA6181] mr-5 cursor-pointer text-[22px] md:text-[26px] font-semibold leading-none whitespace-nowrap">
+        <p className="text-[#AA6181] mr-6 cursor-pointer text-[22px] md:text-[26px] font-semibold leading-none whitespace-nowrap">
           ART STUDIO
         </p>
       </div>
