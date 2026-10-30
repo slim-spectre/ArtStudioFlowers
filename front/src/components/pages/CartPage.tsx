@@ -1,4 +1,3 @@
-
 import { Header } from '../Header'
 import { PopularAddonsSection } from '../PopularAddonsSection'
 import { Footer } from '../Footer'
@@ -42,7 +41,7 @@ export const CartPage = () => {
               >
                 <div className="w-[85px] h-full shrink-0">
                   <img
-                    src={`https://great-worms-end.loca.lt/api/image/${item.image}`}
+                    src={`https://api.artstudioflowers.cz/api/image/${item.image}`}
                     alt={item.name}
                     className="w-full h-full object-cover"
                   />

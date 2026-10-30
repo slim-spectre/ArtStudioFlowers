@@ -24,7 +24,7 @@ export const Footer = () => {
               +420608248753
             </a>
             <a href="mailto:info@gmail.com" className="hover:underline break-all">
-              info@gmail.com
+              art.studio.prague@seznam.cz
             </a>
             <p className="mt-1 leading-snug">Husitská 404/43, Praha 3</p>
           </div>

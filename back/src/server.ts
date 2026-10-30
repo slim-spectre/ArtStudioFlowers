@@ -36,7 +36,21 @@ app.post('/api/orders', async (req: Request, res: Response): Promise<void> => {
     } = req.body
 
     const itemsList = cartItems
-      .map((item: any, index: number) => `${index + 1}. ${item.name} — ${item.quantity} шт. (x ${item.price} Kč)`)
+      .map((item: any, index: number) => {
+        let productName = item.name;
+
+        
+        try {
+          const parsedName = typeof item.name === 'string' ? JSON.parse(item.name) : item.name;
+          if (parsedName && typeof parsedName === 'object') {
+            productName = parsedName.uk || parsedName.cz || parsedName.en || item.name;
+          }
+        } catch (e) {
+          productName = item.name;
+        }
+
+        return `${index + 1}. ${productName} — ${item.quantity} шт. (x ${item.price} Kč)`;
+      })
       .join('\n')
 
     const deliveryText = deliveryType === 'delivery' ? `🚗 Доставка по Празі (${address.distanceKm || 0} км)` : '📦 Самовивіз'

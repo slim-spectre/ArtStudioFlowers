@@ -15,7 +15,7 @@ export const Catalog = ({ selectedCategory = null, onResetCategory }: CatalogPro
   const [items, setItems] = useState<{ id: number; name: any; price: number; image: string; category: any }[]>([])
 
   useEffect(() => {
-    fetch('https://great-worms-end.loca.lt/api/products')
+    fetch('https://api.artstudioflowers.cz/api/products')
       .then((res) => res.json())
       .then((data) => setItems(data))
       .catch((err) => console.error('Помилка завантаження товарів:', err))
@@ -209,7 +209,7 @@ export const Catalog = ({ selectedCategory = null, onResetCategory }: CatalogPro
             <div key={item.id} className="bg-[#F9F9FB] flex flex-col justify-between overflow-hidden">
               <div className="w-full aspect-[4/5] overflow-hidden">
                 <img
-                  src={`https://great-worms-end.loca.lt/api/image/${item.image}`}
+                  src={`https://api.artstudioflowers.cz/api/image/${item.image}`}
                   alt={item.name}
                   className="w-full h-full object-cover"
                 />

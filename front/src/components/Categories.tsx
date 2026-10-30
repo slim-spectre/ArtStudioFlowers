@@ -9,7 +9,7 @@ export const Categories = ({ onSelectCategory }: CategoriesProps) => {
   const [categories, setCategories] = useState<{id : number, name : string , image : string}[]>([]);
 
   useEffect( () => {
-    fetch('https://great-worms-end.loca.lt/api/categories')
+    fetch('https://api.artstudioflowers.cz/api/categories')
       .then((res) => res.json())
       .then((data) => setCategories(data))
       .catch((err) => console.error('Помилка завантаження категорий:', err));
@@ -39,7 +39,7 @@ export const Categories = ({ onSelectCategory }: CategoriesProps) => {
             className="relative w-full aspect-square overflow-hidden group cursor-pointer rounded-[2px]"
           >
             <img
-              src={`https://great-worms-end.loca.lt/api/image/${cat.image}`}
+              src={`https://api.artstudioflowers.cz/api/image/${cat.image}`}
               alt={getLocalizedName(cat.name, language)}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
