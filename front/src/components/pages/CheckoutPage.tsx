@@ -50,9 +50,6 @@ const StripeCheckoutForm = ({ onPaymentSuccess }: { onPaymentSuccess: () => void
 
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
-      confirmParams: {
-        return_url: window.location.origin,
-      },
       redirect: 'if_required',
     })
 
@@ -61,6 +58,8 @@ const StripeCheckoutForm = ({ onPaymentSuccess }: { onPaymentSuccess: () => void
       setIsProcessing(false)
     } else if (paymentIntent && paymentIntent.status === 'succeeded') {
       onPaymentSuccess()
+    } else {
+      setIsProcessing(false)
     }
   }
 
