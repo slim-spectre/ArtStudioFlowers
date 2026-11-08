@@ -77,7 +77,7 @@ const StripeCheckoutForm = ({ onPaymentSuccess }: { onPaymentSuccess: () => void
 }
 
 const stripePromise = loadStripe(
-  'pk_live_51UYlpeFRluQIKgNHijvOJky23QjYAZlU4aL9V2xBIuzlfOqE9Qczv6MoggxEB0jfqqeLTlGnUczbGEyHF3H2G6Aq00LZOL5SFF',
+  'pk_test_51UYlpeFRluQIKgNHMDza3cbL7WfTVtGj3PBkjrKayBzZdFmLHDV0bxDJhDt6V9H7UOAtMn9mZ4stqeNrnhDYSIEH00yiIytmRr',
 )
 
 export const CheckoutPage = () => {
