@@ -4,6 +4,8 @@ import { Footer } from '../Footer'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../../context/CartContext'
 import { useLanguage } from '../../context/LanguageContext'
+import { loadStripe } from '@stripe/stripe-js'
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 
 const countries = [
   { code: '+420', flag: '🇨🇿', name: 'Чехія' },
@@ -34,6 +36,50 @@ const getDeliveryPrice = (km: number) => {
   return 500
 }
 
+const StripeCheckoutForm = ({ onPaymentSuccess }: { onPaymentSuccess: () => void }) => {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [isProcessing, setIsProcessing] = useState(false)
+  const { t } = useLanguage()
+
+  const handleStripeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!stripe || !elements) return
+
+    setIsProcessing(true)
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required',
+    })
+
+    if (error) {
+      alert(error.message)
+      setIsProcessing(false)
+    } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+      onPaymentSuccess()
+    }
+  }
+
+  return (
+    <form
+      onSubmit={handleStripeSubmit}
+      className="w-full flex flex-col gap-4 mt-4 p-4 border border-[#F1569E] rounded-[2px] bg-white"
+    >
+      <PaymentElement />
+      <button
+        disabled={isProcessing || !stripe}
+        className="w-full bg-[#F1569E] text-white py-3 font-serif text-[13px] uppercase rounded-[2px] tracking-wider hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+      >
+        {isProcessing ? 'Processing...' : t.submitOrder}
+      </button>
+    </form>
+  )
+}
+
+const stripePromise = loadStripe(
+  'pk_live_51UYlpeFRluQIKgNHijvOJky23QjYAZlU4aL9V2xBIuzlfOqE9Qczv6MoggxEB0jfqqeLTlGnUczbGEyHF3H2G6Aq00LZOL5SFF',
+)
+
 export const CheckoutPage = () => {
   const navigate = useNavigate()
   const { cartItems, totalPrice, totalItems } = useCart()
@@ -58,6 +104,7 @@ export const CheckoutPage = () => {
   const [comment, setComment] = useState('')
 
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [clientSecret, setClientSecret] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -120,9 +167,15 @@ export const CheckoutPage = () => {
         body: JSON.stringify(orderData),
       })
 
+      const data = await response.json()
+
       if (response.ok) {
-        alert(`${t.submitSuccess}`)
-        navigate('/')
+        if (paymentMethod === 'card' && data.clientSecret) {
+          setClientSecret(data.clientSecret)
+        } else {
+          alert(`${t.submitSuccess}`)
+          navigate('/')
+        }
       } else {
         alert(`${t.submitFault}`)
       }
@@ -398,13 +451,26 @@ export const CheckoutPage = () => {
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-[#F1569E] text-white py-3 font-serif text-[13px] uppercase rounded-[2px] tracking-wider hover:opacity-90 transition-opacity mt-2 cursor-pointer"
-            >
-              {t.submitOrder}
-            </button>
+            {clientSecret && paymentMethod === 'card' ? (
+              <div className="w-full mt-2">
+                <Elements stripe={stripePromise} options={{ clientSecret }}>
+                  <StripeCheckoutForm
+                    onPaymentSuccess={() => {
+                      alert(`${t.submitSuccess}`)
+                      navigate('/')
+                    }}
+                  />
+                </Elements>
+              </div>
+            ) : (
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-[#F1569E] text-white py-3 font-serif text-[13px] uppercase rounded-[2px] tracking-wider hover:opacity-90 transition-opacity mt-2 cursor-pointer"
+              >
+                {t.submitOrder}
+              </button>
+            )}
           </div>
         </form>
         <hr className="border-[#AA6181] mt-5 w-full opacity-40" />

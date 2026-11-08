@@ -3,8 +3,9 @@ import type { Request, Response } from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import axios from 'axios'
-import { launchBot } from './bot.js';
+import { launchBot } from './bot.js'
 import db from './db.js'
+import Stripe from 'stripe'
 
 dotenv.config()
 
@@ -16,6 +17,9 @@ const PORT = process.env.PORT || 5000
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2026-10-28.endive',
+})
 
 app.post('/api/orders', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -37,30 +41,31 @@ app.post('/api/orders', async (req: Request, res: Response): Promise<void> => {
 
     const itemsList = cartItems
       .map((item: any, index: number) => {
-        let productName = item.name;
+        let productName = item.name
 
-        
         try {
-          const parsedName = typeof item.name === 'string' ? JSON.parse(item.name) : item.name;
+          const parsedName = typeof item.name === 'string' ? JSON.parse(item.name) : item.name
           if (parsedName && typeof parsedName === 'object') {
-            productName = parsedName.uk || parsedName.cz || parsedName.en || item.name;
+            productName = parsedName.uk || parsedName.cz || parsedName.en || item.name
           }
         } catch (e) {
-          productName = item.name;
+          productName = item.name
         }
 
-        return `${index + 1}. ${productName} — ${item.quantity} шт. (x ${item.price} Kč)`;
+        return `${index + 1}. ${productName} — ${item.quantity} шт. (x ${item.price} Kč)`
       })
       .join('\n')
 
-    const deliveryText = deliveryType === 'delivery' ? `🚗 Доставка по Празі (${address.distanceKm || 0} км)` : '📦 Самовивіз'
-    const addressText = deliveryType === 'delivery'
+    const deliveryText =
+      deliveryType === 'delivery' ? `🚗 Доставка по Празі (${address.distanceKm || 0} км)` : '📦 Самовивіз'
+    const addressText =
+      deliveryType === 'delivery'
         ? `Вул. ${address.street}, буд. ${address.house}, під'їзд ${address.entrance}`
         : 'Самовивіз із студії'
     const recipientText = recipientType === 'self' ? '👤 Сам замовник' : '🎁 В подарунок'
 
     let paymentText = '💵 Готівкою'
-    if (paymentMethod === 'card') paymentText = '💳 Карткою'
+    if (paymentMethod === 'card') paymentText = '💳 Карткою (Очікується оплата на сайті ⏳)'
     if (paymentMethod === 'crypto') paymentText = '🪙 Криптовалютою'
 
     const message = `
@@ -91,87 +96,101 @@ ${itemsList}
       parse_mode: 'HTML',
     })
 
+    if (paymentMethod === 'card') {
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(totalPrice * 100),
+        currency: 'czk',
+        metadata: {
+          clientName: name,
+          phone: phoneNumber,
+        },
+      })
+
+      res.status(200).json({
+        success: true,
+        clientSecret: paymentIntent.client_secret,
+        message: 'Очікує оплати',
+      })
+
+      return
+    }
+
     res.status(200).json({ success: true, message: 'Замовлення надіслано' })
   } catch (error) {
-    console.error('Помилка відправки в Telegram:', error)
+    console.error('Помилка сервера:', error)
     res.status(500).json({ success: false, error: 'Помилка сервера' })
   }
 })
 
 app.get('/api/products', (req: Request, res: Response) => {
   db.all('SELECT * FROM products ORDER BY id DESC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
-
+    if (err) return res.status(500).json({ error: err.message })
+    res.json(rows)
+  })
+})
 
 app.get('/api/categories', (req: Request, res: Response) => {
   db.all('SELECT * FROM categories ORDER BY id DESC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
+    if (err) return res.status(500).json({ error: err.message })
+    res.json(rows)
+  })
+})
 
 app.get('/api/addons', (req: Request, res: Response) => {
   db.all('SELECT * FROM addons ORDER BY id DESC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
+    if (err) return res.status(500).json({ error: err.message })
+    res.json(rows)
+  })
+})
 
 app.get('/api/banners', (req: Request, res: Response) => {
   db.all('SELECT * FROM banners ORDER BY id DESC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
-});
-
+    if (err) return res.status(500).json({ error: err.message })
+    res.json(rows)
+  })
+})
 
 app.get('/api/image/:fileId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const fileId = req.params.fileId;
-    
-    
-    const tgFileRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`);
-    const tgFileData = await tgFileRes.json();
-    
+    const fileId = req.params.fileId
+
+    const tgFileRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`)
+    const tgFileData = await tgFileRes.json()
+
     if (!tgFileData.ok) {
-      res.status(404).send('Фото не знайдено');
-      return;
+      res.status(404).send('Фото не знайдено')
+      return
     }
 
-    
-    const filePath = tgFileData.result.file_path;
-    const imageRes = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`);
-    
-    res.setHeader('Content-Type', imageRes.headers.get('content-type') || 'image/jpeg');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    
+    const filePath = tgFileData.result.file_path
+    const imageRes = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`)
+
+    res.setHeader('Content-Type', imageRes.headers.get('content-type') || 'image/jpeg')
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+
     if (imageRes.body) {
-      const buffer = await imageRes.arrayBuffer();
-      res.send(Buffer.from(buffer));
+      const buffer = await imageRes.arrayBuffer()
+      res.send(Buffer.from(buffer))
     } else {
-      res.status(500).send('Помилка завантаження фото');
+      res.status(500).send('Помилка завантаження фото')
     }
   } catch (error) {
-    console.error('Помилка проксі зображення:', error);
-    res.status(500).send('Внутрішня помилка');
+    console.error('Помилка проксі зображення:', error)
+    res.status(500).send('Внутрішня помилка')
   }
-});
-
+})
 
 app.post('/api/products', (req: Request, res: Response) => {
-  const { name, price, image, category } = req.body;
-  const query = `INSERT INTO products (name, price, image, category) VALUES (?, ?, ?, ?)`;
-  
+  const { name, price, image, category } = req.body
+  const query = `INSERT INTO products (name, price, image, category) VALUES (?, ?, ?, ?)`
+
   db.run(query, [name, Number(price), image, category], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    res.status(201).json({ id: this.lastID, name, price, image, category });
-  });
-});
+    if (err) return res.status(500).json({ error: err.message })
+    res.status(201).json({ id: this.lastID, name, price, image, category })
+  })
+})
 
 app.listen(PORT, () => {
   console.log(`Сервер працює на http://localhost:${PORT}`)
-  launchBot();
+  launchBot()
 })
