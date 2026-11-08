@@ -4,8 +4,6 @@ import { Footer } from '../Footer'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../../context/CartContext'
 import { useLanguage } from '../../context/LanguageContext'
-import { loadStripe } from '@stripe/stripe-js'
-import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 
 const countries = [
   { code: '+420', flag: '🇨🇿', name: 'Чехія' },
@@ -36,75 +34,18 @@ const getDeliveryPrice = (km: number) => {
   return 500
 }
 
-const StripeCheckoutForm = ({ onPaymentSuccess }: { onPaymentSuccess: () => void }) => {
-  const stripe = useStripe()
-  const elements = useElements()
-  const [isProcessing, setIsProcessing] = useState(false)
-  const { t } = useLanguage()
-
-  const handleStripeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!stripe || !elements) return
-
-    setIsProcessing(true)
-
-    const { error: submitError } = await elements.submit()
-    if (submitError) {
-      alert(submitError.message)
-      setIsProcessing(false)
-      return
-    }
-
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      redirect: 'if_required',
-    })
-
-    if (error) {
-      alert(`Помилка Stripe: ${error.message}`)
-      setIsProcessing(false)
-    } else if (paymentIntent) {
-      console.log('Payment Intent Status:', paymentIntent.status)
-      if (paymentIntent.status === 'succeeded') {
-        onPaymentSuccess()
-      } else {
-        alert(`Статус платежу: ${paymentIntent.status}`)
-        setIsProcessing(false)
-      }
-    } else {
-      setIsProcessing(false)
-    }
-  }
-
-  return (
-    <form
-      onSubmit={handleStripeSubmit}
-      className="w-full flex flex-col gap-4 mt-4 p-4 border border-[#F1569E] rounded-[2px] bg-white"
-    >
-      <PaymentElement />
-      <button
-        disabled={isProcessing || !stripe}
-        className="w-full bg-[#F1569E] text-white py-3 font-serif text-[13px] uppercase rounded-[2px] tracking-wider hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
-      >
-        {isProcessing ? 'Processing...' : t.submitOrder}
-      </button>
-    </form>
-  )
-}
-
-const stripePromise = loadStripe(
-  'pk_test_51UYlpeFRluQIKgNHMDza3cbL7WfTVtGj3PBkjrKayBzZdFmLHDV0bxDJhDt6V9H7UOAtMn9mZ4stqeNrnhDYSIEH00yiIytmRr',
-)
-
 export const CheckoutPage = () => {
   const navigate = useNavigate()
   const { cartItems, totalPrice, totalItems } = useCart()
-  const [isPaid, setIsPaid] = useState(false)
+  const { t } = useLanguage()
+
+  // Перевіряємо, чи користувач повернувся зі Stripe після успішної оплати
+  const queryParams = new URLSearchParams(window.location.search)
+  const isSuccess = queryParams.get('success') === 'true'
 
   const [selectedCountry, setSelectedCountry] = useState(countries[0])
   const [phoneNumber, setPhoneNumber] = useState('')
   const [name, setName] = useState('')
-  const { t } = useLanguage()
 
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery')
   const [street, setStreet] = useState('')
@@ -121,7 +62,6 @@ export const CheckoutPage = () => {
   const [comment, setComment] = useState('')
 
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [clientSecret, setClientSecret] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -187,8 +127,9 @@ export const CheckoutPage = () => {
       const data = await response.json()
 
       if (response.ok) {
-        if (paymentMethod === 'card' && data.clientSecret) {
-          setClientSecret(data.clientSecret)
+        // Якщо обрано картку і бекенд повернув посилання на Stripe Checkout — редиректимо туди
+        if (paymentMethod === 'card' && data.url) {
+          window.location.href = data.url
         } else {
           alert(`${t.submitSuccess}`)
           navigate('/')
@@ -201,6 +142,31 @@ export const CheckoutPage = () => {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  // Якщо користувач повернувся після успішної оплати
+  if (isSuccess) {
+    return (
+      <section className="w-full flex flex-col items-center">
+        <Header />
+        <main className="w-full my-12 px-4 max-w-[600px] text-center">
+          <div className="w-full p-8 border border-[#F1569E] rounded-[2px] bg-[#FFF0F5] flex flex-col gap-4">
+            <h2 className="text-[#F1569E] font-serif text-[24px] uppercase font-bold">Дякуємо за замовлення! 🌸</h2>
+            <p className="text-[#AA6181] text-[14px] font-serif">
+              Ваш платіж успішно пройдено через Stripe. Ми вже готуємо ваш букет!
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="mt-4 bg-[#F1569E] text-white py-3 px-8 mx-auto font-serif text-[12px] uppercase rounded-[2px] cursor-pointer hover:opacity-90 transition-opacity"
+            >
+              На головну
+            </button>
+          </div>
+        </main>
+        <Footer />
+      </section>
+    )
   }
 
   return (
@@ -467,39 +433,14 @@ export const CheckoutPage = () => {
                 )}
               </div>
             </div>
-            {isPaid ? (
-              <div className="w-full p-6 border border-[#F1569E] rounded-[2px] bg-[#FFF0F5] text-center flex flex-col gap-3 mt-4">
-                <h2 className="text-[#F1569E] font-serif text-[22px] uppercase font-bold">Дякуємо за замовлення! 🌸</h2>
-                <p className="text-[#AA6181] text-[14px] font-serif">
-                  Ваш платіж успішно пройдено. Ми вже готуємо ваш букет!
-                </p>
-                <button
-                  type="button"
-                  onClick={() => navigate('/')}
-                  className="mt-2 bg-[#F1569E] text-white py-2 px-6 mx-auto font-serif text-[12px] uppercase rounded-[2px] cursor-pointer hover:opacity-90 transition-opacity"
-                >
-                  На головну
-                </button>
-              </div>
-            ) : clientSecret && paymentMethod === 'card' ? (
-              <div className="w-full mt-2">
-                <Elements stripe={stripePromise} options={{ clientSecret }}>
-                  <StripeCheckoutForm
-                    onPaymentSuccess={() => {
-                      setIsPaid(true)
-                    }}
-                  />
-                </Elements>
-              </div>
-            ) : (
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full bg-[#F1569E] text-white py-3 font-serif text-[13px] uppercase rounded-[2px] tracking-wider hover:opacity-90 transition-opacity mt-2 cursor-pointer"
-              >
-                {t.submitOrder}
-              </button>
-            )}
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full bg-[#F1569E] text-white py-3 font-serif text-[13px] uppercase rounded-[2px] tracking-wider hover:opacity-90 transition-opacity mt-2 cursor-pointer disabled:opacity-50"
+            >
+              {isSubmitting ? 'Processing...' : t.submitOrder}
+            </button>
           </div>
         </form>
         <hr className="border-[#AA6181] mt-5 w-full opacity-40" />

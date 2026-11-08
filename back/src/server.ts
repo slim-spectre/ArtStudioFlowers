@@ -11,7 +11,7 @@ dotenv.config()
 
 const app = express()
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '10kb' })) // Захист від великих сміттєвих пакетів
 
 const PORT = process.env.PORT || 5000
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
@@ -65,7 +65,7 @@ app.post('/api/orders', async (req: Request, res: Response): Promise<void> => {
     const recipientText = recipientType === 'self' ? '👤 Сам замовник' : '🎁 В подарунок'
 
     let paymentText = '💵 Готівкою'
-    if (paymentMethod === 'card') paymentText = '💳 Карткою (Очікується оплата на сайті ⏳)'
+    if (paymentMethod === 'card') paymentText = '💳 Карткою через Stripe'
     if (paymentMethod === 'crypto') paymentText = '🪙 Криптовалютою'
 
     const message = `
@@ -96,10 +96,24 @@ ${itemsList}
       parse_mode: 'HTML',
     })
 
+    // Якщо обрано оплату карткою — створюємо Stripe Checkout Session замість PaymentIntent
     if (paymentMethod === 'card') {
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(totalPrice * 100),
-        currency: 'czk',
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: 'czk',
+              product_data: {
+                name: 'Замовлення квітів (Art Studio Flowers)',
+              },
+              unit_amount: Math.round(totalPrice * 100),
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'payment',
+        success_url: `${req.headers.origin || 'https://artstudioflowers.cz'}/checkout?success=true`,
+        cancel_url: `${req.headers.origin || 'https://artstudioflowers.cz'}/checkout?canceled=true`,
         metadata: {
           clientName: name,
           phone: phoneNumber,
@@ -108,8 +122,8 @@ ${itemsList}
 
       res.status(200).json({
         success: true,
-        clientSecret: paymentIntent.client_secret,
-        message: 'Очікує оплати',
+        url: session.url,
+        message: 'Сесію створено',
       })
 
       return
