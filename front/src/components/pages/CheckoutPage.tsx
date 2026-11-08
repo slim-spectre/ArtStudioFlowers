@@ -47,7 +47,7 @@ const StripeCheckoutForm = ({ onPaymentSuccess }: { onPaymentSuccess: () => void
     if (!stripe || !elements) return
 
     setIsProcessing(true)
-    
+
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
@@ -87,6 +87,7 @@ const stripePromise = loadStripe(
 export const CheckoutPage = () => {
   const navigate = useNavigate()
   const { cartItems, totalPrice, totalItems } = useCart()
+  const [isPaid, setIsPaid] = useState(false)
 
   const [selectedCountry, setSelectedCountry] = useState(countries[0])
   const [phoneNumber, setPhoneNumber] = useState('')
@@ -454,14 +455,26 @@ export const CheckoutPage = () => {
                 )}
               </div>
             </div>
-
-            {clientSecret && paymentMethod === 'card' ? (
+            {isPaid ? (
+              <div className="w-full p-6 border border-[#F1569E] rounded-[2px] bg-[#FFF0F5] text-center flex flex-col gap-3 mt-4">
+                <h2 className="text-[#F1569E] font-serif text-[22px] uppercase font-bold">Дякуємо за замовлення! 🌸</h2>
+                <p className="text-[#AA6181] text-[14px] font-serif">
+                  Ваш платіж успішно пройдено. Ми вже готуємо ваш букет!
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/')}
+                  className="mt-2 bg-[#F1569E] text-white py-2 px-6 mx-auto font-serif text-[12px] uppercase rounded-[2px] cursor-pointer hover:opacity-90 transition-opacity"
+                >
+                  На головну
+                </button>
+              </div>
+            ) : clientSecret && paymentMethod === 'card' ? (
               <div className="w-full mt-2">
                 <Elements stripe={stripePromise} options={{ clientSecret }}>
                   <StripeCheckoutForm
                     onPaymentSuccess={() => {
-                      alert(`${t.submitSuccess}`)
-                      navigate('/')
+                      setIsPaid(true)
                     }}
                   />
                 </Elements>
