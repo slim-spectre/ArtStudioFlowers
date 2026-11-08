@@ -47,8 +47,12 @@ const StripeCheckoutForm = ({ onPaymentSuccess }: { onPaymentSuccess: () => void
     if (!stripe || !elements) return
 
     setIsProcessing(true)
+    
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
+      confirmParams: {
+        return_url: window.location.origin,
+      },
       redirect: 'if_required',
     })
 
