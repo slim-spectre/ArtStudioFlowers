@@ -48,16 +48,29 @@ const StripeCheckoutForm = ({ onPaymentSuccess }: { onPaymentSuccess: () => void
 
     setIsProcessing(true)
 
+    const { error: submitError } = await elements.submit()
+    if (submitError) {
+      alert(submitError.message)
+      setIsProcessing(false)
+      return
+    }
+
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       redirect: 'if_required',
     })
 
     if (error) {
-      alert(error.message)
+      alert(`Помилка Stripe: ${error.message}`)
       setIsProcessing(false)
-    } else if (paymentIntent && paymentIntent.status === 'succeeded') {
-      onPaymentSuccess()
+    } else if (paymentIntent) {
+      console.log('Payment Intent Status:', paymentIntent.status)
+      if (paymentIntent.status === 'succeeded') {
+        onPaymentSuccess()
+      } else {
+        alert(`Статус платежу: ${paymentIntent.status}`)
+        setIsProcessing(false)
+      }
     } else {
       setIsProcessing(false)
     }
