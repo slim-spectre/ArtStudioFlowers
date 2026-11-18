@@ -40,8 +40,13 @@ export const CheckoutPage = () => {
   const { t, language } = useLanguage()
 
   const queryParams = new URLSearchParams(window.location.search)
-  const isSuccess = queryParams.get('success') === 'true'
-  const invoiceNumber = queryParams.get('invoice')
+  const isStripeSuccess = queryParams.get('success') === 'true'
+  const urlInvoiceNumber = queryParams.get('invoice')
+
+  // Стейт для показу фірмової плашки при будь-якому способі оплати
+  const [completedInvoice, setCompletedInvoice] = useState<string | null>(
+    isStripeSuccess ? urlInvoiceNumber || 'PAID' : null
+  )
 
   const [selectedCountry, setSelectedCountry] = useState(countries[0])
   const [phoneNumber, setPhoneNumber] = useState('')
@@ -69,7 +74,8 @@ export const CheckoutPage = () => {
     {
       emailPlaceholder: string
       successTitle: string
-      successDesc: string
+      successDescCard: string
+      successDescOther: string
       invoiceSent: string
       invoiceLabel: string
       homeBtn: string
@@ -78,7 +84,8 @@ export const CheckoutPage = () => {
     cz: {
       emailPlaceholder: 'Váš e-mail (pro zaslání faktury) *',
       successTitle: 'Děkujeme za objednávku! 🌸',
-      successDesc: 'Vaše platba přes Stripe proběhla úspěšně. Již připravujeme vaši kytici!',
+      successDescCard: 'Vaše platba přes Stripe proběhla úspěšně. Již připravujeme vaši kytici!',
+      successDescOther: 'Vaše objednávka byla úspěšně přijata. Již připravujeme vaši kytici!',
       invoiceSent: 'Elektronická faktura a potvrzení byly odeslány na váš e-mail.',
       invoiceLabel: 'Číslo faktury:',
       homeBtn: 'Na hlavní stránku',
@@ -86,7 +93,8 @@ export const CheckoutPage = () => {
     ua: {
       emailPlaceholder: 'Ваш E-mail (для відправки фактури) *',
       successTitle: 'Дякуємо за замовлення! 🌸',
-      successDesc: 'Ваш платіж успішно пройдено через Stripe. Ми вже готуємо ваш букет!',
+      successDescCard: 'Ваш платіж успішно пройдено через Stripe. Ми вже готуємо ваш букет!',
+      successDescOther: 'Ваше замовлення успішно прийнято. Ми вже готуємо ваш букет!',
       invoiceSent: 'Електронну фактуру та підтвердження надіслано на вашу пошту.',
       invoiceLabel: 'Номер фактури:',
       homeBtn: 'На головну',
@@ -94,7 +102,8 @@ export const CheckoutPage = () => {
     en: {
       emailPlaceholder: 'Your E-mail (for invoice delivery) *',
       successTitle: 'Thank you for your order! 🌸',
-      successDesc: 'Your Stripe payment was successful. We are already preparing your bouquet!',
+      successDescCard: 'Your Stripe payment was successful. We are already preparing your bouquet!',
+      successDescOther: 'Your order has been received. We are already preparing your bouquet!',
       invoiceSent: 'An electronic invoice and receipt have been sent to your email.',
       invoiceLabel: 'Invoice number:',
       homeBtn: 'Back to Home',
@@ -102,7 +111,8 @@ export const CheckoutPage = () => {
     ru: {
       emailPlaceholder: 'Ваш E-mail (для отправки фактуры) *',
       successTitle: 'Спасибо за заказ! 🌸',
-      successDesc: 'Ваш платеж успешно проведен через Stripe. Мы уже готовим ваш букет!',
+      successDescCard: 'Ваш платеж успешно проведен через Stripe. Мы уже готовим ваш букет!',
+      successDescOther: 'Ваш заказ успешно принят. Мы уже готовим ваш букет!',
       invoiceSent: 'Электронная фактура и чек отправлены на вашу почту.',
       invoiceLabel: 'Номер фактуры:',
       homeBtn: 'На главную',
@@ -179,12 +189,9 @@ export const CheckoutPage = () => {
         if (paymentMethod === 'card' && data.url) {
           window.location.href = data.url
         } else {
-          alert(
-            data.invoiceNumber
-              ? `${t.submitSuccess}\n${currentTexts.invoiceLabel} ${data.invoiceNumber}`
-              : `${t.submitSuccess}`,
-          )
-          navigate('/')
+          // Відкриваємо ту саму гарну плашку для готівки або крипти
+          setCompletedInvoice(data.invoiceNumber || 'OK')
+          window.scrollTo({ top: 0, behavior: 'smooth' })
         }
       } else {
         alert(`${t.submitFault}`)
@@ -196,19 +203,22 @@ export const CheckoutPage = () => {
     }
   }
 
-  if (isSuccess) {
+  // Єдина гарна плашка після оформлення замовлення (для будь-якого способу оплати)
+  if (completedInvoice) {
     return (
       <section className="w-full flex flex-col items-center">
         <Header />
         <main className="w-full my-12 px-4 max-w-[600px] text-center">
           <div className="w-full p-8 border border-[#F1569E] rounded-[2px] bg-[#FFF0F5] flex flex-col gap-3">
             <h2 className="text-[#F1569E] font-serif text-[24px] uppercase font-bold">{currentTexts.successTitle}</h2>
-            <p className="text-[#AA6181] text-[14px] font-serif">{currentTexts.successDesc}</p>
+            <p className="text-[#AA6181] text-[14px] font-serif">
+              {isStripeSuccess ? currentTexts.successDescCard : currentTexts.successDescOther}
+            </p>
 
-            {invoiceNumber && (
+            {completedInvoice !== 'PAID' && completedInvoice !== 'OK' && (
               <div className="my-2 py-2 px-4 bg-white border border-[#F1569E]/40 rounded-[2px] inline-block mx-auto">
                 <span className="text-[12px] font-serif text-[#AA6181] block">{currentTexts.invoiceLabel}</span>
-                <strong className="text-[16px] font-mono text-[#F1569E] tracking-wider">{invoiceNumber}</strong>
+                <strong className="text-[16px] font-mono text-[#F1569E] tracking-wider">{completedInvoice}</strong>
               </div>
             )}
 
