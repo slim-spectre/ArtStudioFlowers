@@ -37,15 +37,16 @@ const getDeliveryPrice = (km: number) => {
 export const CheckoutPage = () => {
   const navigate = useNavigate()
   const { cartItems, totalPrice, totalItems } = useCart()
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
 
-  // Перевіряємо, чи користувач повернувся зі Stripe після успішної оплати
   const queryParams = new URLSearchParams(window.location.search)
   const isSuccess = queryParams.get('success') === 'true'
+  const invoiceNumber = queryParams.get('invoice')
 
   const [selectedCountry, setSelectedCountry] = useState(countries[0])
   const [phoneNumber, setPhoneNumber] = useState('')
   const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
 
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery')
   const [street, setStreet] = useState('')
@@ -62,6 +63,53 @@ export const CheckoutPage = () => {
   const [comment, setComment] = useState('')
 
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const extraTexts: Record<
+    string,
+    {
+      emailPlaceholder: string
+      successTitle: string
+      successDesc: string
+      invoiceSent: string
+      invoiceLabel: string
+      homeBtn: string
+    }
+  > = {
+    cz: {
+      emailPlaceholder: 'Váš e-mail (pro zaslání faktury) *',
+      successTitle: 'Děkujeme za objednávku! 🌸',
+      successDesc: 'Vaše platba přes Stripe proběhla úspěšně. Již připravujeme vaši kytici!',
+      invoiceSent: 'Elektronická faktura a potvrzení byly odeslány na váš e-mail.',
+      invoiceLabel: 'Číslo faktury:',
+      homeBtn: 'Na hlavní stránku',
+    },
+    ua: {
+      emailPlaceholder: 'Ваш E-mail (для відправки фактури) *',
+      successTitle: 'Дякуємо за замовлення! 🌸',
+      successDesc: 'Ваш платіж успішно пройдено через Stripe. Ми вже готуємо ваш букет!',
+      invoiceSent: 'Електронну фактуру та підтвердження надіслано на вашу пошту.',
+      invoiceLabel: 'Номер фактури:',
+      homeBtn: 'На головну',
+    },
+    en: {
+      emailPlaceholder: 'Your E-mail (for invoice delivery) *',
+      successTitle: 'Thank you for your order! 🌸',
+      successDesc: 'Your Stripe payment was successful. We are already preparing your bouquet!',
+      invoiceSent: 'An electronic invoice and receipt have been sent to your email.',
+      invoiceLabel: 'Invoice number:',
+      homeBtn: 'Back to Home',
+    },
+    ru: {
+      emailPlaceholder: 'Ваш E-mail (для отправки фактуры) *',
+      successTitle: 'Спасибо за заказ! 🌸',
+      successDesc: 'Ваш платеж успешно проведен через Stripe. Мы уже готовим ваш букет!',
+      invoiceSent: 'Электронная фактура и чек отправлены на вашу почту.',
+      invoiceLabel: 'Номер фактуры:',
+      homeBtn: 'На главную',
+    },
+  }
+
+  const currentTexts = extraTexts[language] || extraTexts.cz
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -103,6 +151,7 @@ export const CheckoutPage = () => {
 
     const orderData = {
       name,
+      email,
       phoneNumber: `${selectedCountry.code} ${phoneNumber}`,
       deliveryType,
       address: deliveryType === 'delivery' ? { street, house, entrance, distanceKm } : `${t.pickup}`,
@@ -127,11 +176,14 @@ export const CheckoutPage = () => {
       const data = await response.json()
 
       if (response.ok) {
-        // Якщо обрано картку і бекенд повернув посилання на Stripe Checkout — редиректимо туди
         if (paymentMethod === 'card' && data.url) {
           window.location.href = data.url
         } else {
-          alert(`${t.submitSuccess}`)
+          alert(
+            data.invoiceNumber
+              ? `${t.submitSuccess}\n${currentTexts.invoiceLabel} ${data.invoiceNumber}`
+              : `${t.submitSuccess}`,
+          )
           navigate('/')
         }
       } else {
@@ -144,23 +196,30 @@ export const CheckoutPage = () => {
     }
   }
 
-  // Якщо користувач повернувся після успішної оплати
   if (isSuccess) {
     return (
       <section className="w-full flex flex-col items-center">
         <Header />
         <main className="w-full my-12 px-4 max-w-[600px] text-center">
-          <div className="w-full p-8 border border-[#F1569E] rounded-[2px] bg-[#FFF0F5] flex flex-col gap-4">
-            <h2 className="text-[#F1569E] font-serif text-[24px] uppercase font-bold">Дякуємо за замовлення! 🌸</h2>
-            <p className="text-[#AA6181] text-[14px] font-serif">
-              Ваш платіж успішно пройдено через Stripe. Ми вже готуємо ваш букет!
-            </p>
+          <div className="w-full p-8 border border-[#F1569E] rounded-[2px] bg-[#FFF0F5] flex flex-col gap-3">
+            <h2 className="text-[#F1569E] font-serif text-[24px] uppercase font-bold">{currentTexts.successTitle}</h2>
+            <p className="text-[#AA6181] text-[14px] font-serif">{currentTexts.successDesc}</p>
+
+            {invoiceNumber && (
+              <div className="my-2 py-2 px-4 bg-white border border-[#F1569E]/40 rounded-[2px] inline-block mx-auto">
+                <span className="text-[12px] font-serif text-[#AA6181] block">{currentTexts.invoiceLabel}</span>
+                <strong className="text-[16px] font-mono text-[#F1569E] tracking-wider">{invoiceNumber}</strong>
+              </div>
+            )}
+
+            <p className="text-[#AA6181] text-[12px] font-serif opacity-90">{currentTexts.invoiceSent}</p>
+
             <button
               type="button"
               onClick={() => navigate('/')}
               className="mt-4 bg-[#F1569E] text-white py-3 px-8 mx-auto font-serif text-[12px] uppercase rounded-[2px] cursor-pointer hover:opacity-90 transition-opacity"
             >
-              На головну
+              {currentTexts.homeBtn}
             </button>
           </div>
         </main>
@@ -217,6 +276,7 @@ export const CheckoutPage = () => {
 
                 <input
                   type="tel"
+                  required
                   placeholder="659 540 30 393"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
@@ -227,9 +287,21 @@ export const CheckoutPage = () => {
               <div className="border border-[#AA6181] rounded-[2px] px-3 py-2 bg-white">
                 <input
                   type="text"
+                  required
                   placeholder={t.namePlaceholder}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  className="w-full text-[13px] font-serif text-[#AA6181] bg-transparent focus:outline-none placeholder-[#AA6181]/50"
+                />
+              </div>
+
+              <div className="border border-[#AA6181] rounded-[2px] px-3 py-2 bg-white">
+                <input
+                  type="email"
+                  required
+                  placeholder={currentTexts.emailPlaceholder}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full text-[13px] font-serif text-[#AA6181] bg-transparent focus:outline-none placeholder-[#AA6181]/50"
                 />
               </div>
@@ -268,6 +340,7 @@ export const CheckoutPage = () => {
                 <div className="grid grid-cols-3 gap-2">
                   <input
                     type="text"
+                    required
                     placeholder={t.street}
                     value={street}
                     onChange={(e) => setStreet(e.target.value)}
@@ -275,6 +348,7 @@ export const CheckoutPage = () => {
                   />
                   <input
                     type="text"
+                    required
                     placeholder={t.house}
                     value={house}
                     onChange={(e) => setHouse(e.target.value)}

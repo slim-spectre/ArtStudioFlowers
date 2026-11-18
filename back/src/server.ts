@@ -6,12 +6,12 @@ import axios from 'axios'
 import { launchBot } from './bot.js'
 import db from './db.js'
 import Stripe from 'stripe'
+import { createInvoiceRecord, markInvoiceAsPaid, sendInvoiceEmail } from './invoiceService.js'
 
 dotenv.config()
 
 const app = express()
 app.use(cors())
-app.use(express.json({ limit: '10kb' })) // Захист від великих сміттєвих пакетів
 
 const PORT = process.env.PORT || 5000
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
@@ -21,10 +21,59 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-10-28.endive',
 })
 
+
+app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req: Request, res: Response): Promise<void> => {
+  const sig = req.headers['stripe-signature'] as string
+  let event: Stripe.Event
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET!)
+  } catch (err: any) {
+    console.error('⚠️ Помилка підпису Stripe Webhook:', err.message)
+    res.status(400).send(`Webhook Error: ${err.message}`)
+    return
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as Stripe.Checkout.Session
+    const invoiceNumber = session.metadata?.invoiceNumber
+
+    if (invoiceNumber) {
+      const updatedInvoice = await markInvoiceAsPaid(invoiceNumber)
+      if (updatedInvoice) {
+        const items = JSON.parse(updatedInvoice.items_json)
+        await sendInvoiceEmail(updatedInvoice.invoice_number, updatedInvoice.verification_hash, {
+          clientName: updatedInvoice.client_name,
+          clientEmail: updatedInvoice.client_email,
+          clientPhone: updatedInvoice.client_phone,
+          items,
+          deliveryInfo: updatedInvoice.delivery_info,
+          deliveryCost: updatedInvoice.delivery_cost,
+          totalPrice: updatedInvoice.total_price,
+          paymentMethod: 'card',
+          paymentStatus: 'paid',
+        })
+
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          chat_id: CHAT_ID,
+          text: `✅ <b>ОПЛАТУ ПІДТВЕРДЖЕНО!</b>\n🧾 Фактура: <code>${invoiceNumber}</code>\n🔐 Код перевірки: <code>${updatedInvoice.verification_hash}</code>\n📧 Чек надіслано клієнту на ${updatedInvoice.client_email}`,
+          parse_mode: 'HTML',
+        })
+      }
+    }
+  }
+
+  res.json({ received: true })
+})
+
+app.use(express.json({ limit: '10kb' }))
+
+// 2. ОФОРМЛЕННЯ ЗАМОВЛЕННЯ + ГЕНЕРАЦІЯ ФАКТУРИ
 app.post('/api/orders', async (req: Request, res: Response): Promise<void> => {
   try {
     const {
       name,
+      email,
       phoneNumber,
       deliveryType,
       address,
@@ -39,21 +88,21 @@ app.post('/api/orders', async (req: Request, res: Response): Promise<void> => {
       deliveryCost,
     } = req.body
 
-    const itemsList = cartItems
-      .map((item: any, index: number) => {
-        let productName = item.name
-
-        try {
-          const parsedName = typeof item.name === 'string' ? JSON.parse(item.name) : item.name
-          if (parsedName && typeof parsedName === 'object') {
-            productName = parsedName.uk || parsedName.cz || parsedName.en || item.name
-          }
-        } catch (e) {
-          productName = item.name
+    const formattedItems = cartItems.map((item: any) => {
+      let productName = item.name
+      try {
+        const parsedName = typeof item.name === 'string' ? JSON.parse(item.name) : item.name
+        if (parsedName && typeof parsedName === 'object') {
+          productName = parsedName.uk || parsedName.cz || parsedName.en || item.name
         }
+      } catch (e) {
+        productName = item.name
+      }
+      return { name: productName, quantity: item.quantity, price: item.price }
+    })
 
-        return `${index + 1}. ${productName} — ${item.quantity} шт. (x ${item.price} Kč)`
-      })
+    const itemsList = formattedItems
+      .map((item: any, index: number) => `${index + 1}. ${item.name} — ${item.quantity} шт. (x ${item.price} Kč)`)
       .join('\n')
 
     const deliveryText =
@@ -65,13 +114,36 @@ app.post('/api/orders', async (req: Request, res: Response): Promise<void> => {
     const recipientText = recipientType === 'self' ? '👤 Сам замовник' : '🎁 В подарунок'
 
     let paymentText = '💵 Готівкою'
-    if (paymentMethod === 'card') paymentText = '💳 Карткою через Stripe'
+    if (paymentMethod === 'card') paymentText = '💳 Карткою через Stripe (очікує оплати)'
     if (paymentMethod === 'crypto') paymentText = '🪙 Криптовалютою'
+
+    // Зберігаємо фактуру в базу даних
+    const invoiceData = {
+      clientName: name,
+      clientEmail: email || '',
+      clientPhone: phoneNumber,
+      items: formattedItems,
+      deliveryInfo: `${deliveryText} (${addressText})`,
+      deliveryCost: deliveryCost || 0,
+      totalPrice,
+      paymentMethod,
+      paymentStatus: (paymentMethod === 'cash' ? 'pending_cash' : 'pending') as any,
+    }
+
+    const { invoiceNumber, verificationHash } = await createInvoiceRecord(invoiceData)
+
+    // Якщо готівка — відправляємо фактуру на пошту одразу
+    if (paymentMethod === 'cash' && email) {
+      await sendInvoiceEmail(invoiceNumber, verificationHash, invoiceData)
+    }
 
     const message = `
 🌸 <b>НОВЕ ЗАМОВЛЕННЯ!</b> 🌸
+🧾 <b>Фактура:</b> <code>${invoiceNumber}</code>
+🔐 <b>Код перевірки:</b> <code>${verificationHash}</code>
 
 👤 <b>Клієнт:</b> ${name}
+📧 <b>Email:</b> ${email || 'Не вказано'}
 📞 <b>Телефон:</b> ${phoneNumber}
 🎁 <b>Отримувач:</b> ${recipientText}
 
@@ -96,15 +168,15 @@ ${itemsList}
       parse_mode: 'HTML',
     })
 
-    // Якщо обрано оплату карткою — створюємо Stripe Checkout Session замість PaymentIntent
     if (paymentMethod === 'card') {
       const session = await stripe.checkout.sessions.create({
+        customer_email: email || undefined,
         line_items: [
           {
             price_data: {
               currency: 'czk',
               product_data: {
-                name: 'Замовлення квітів (Art Studio Flowers)',
+                name: `Замовлення ${invoiceNumber} (Art Studio Flowers)`,
               },
               unit_amount: Math.round(totalPrice * 100),
             },
@@ -112,9 +184,10 @@ ${itemsList}
           },
         ],
         mode: 'payment',
-        success_url: `${req.headers.origin || 'https://artstudioflowers.cz'}/checkout?success=true`,
+        success_url: `${req.headers.origin || 'https://artstudioflowers.cz'}/checkout?success=true&invoice=${invoiceNumber}`,
         cancel_url: `${req.headers.origin || 'https://artstudioflowers.cz'}/checkout?canceled=true`,
         metadata: {
+          invoiceNumber,
           clientName: name,
           phone: phoneNumber,
         },
@@ -123,13 +196,14 @@ ${itemsList}
       res.status(200).json({
         success: true,
         url: session.url,
+        invoiceNumber,
         message: 'Сесію створено',
       })
 
       return
     }
 
-    res.status(200).json({ success: true, message: 'Замовлення надіслано' })
+    res.status(200).json({ success: true, invoiceNumber, message: 'Замовлення надіслано' })
   } catch (error) {
     console.error('Помилка сервера:', error)
     res.status(500).json({ success: false, error: 'Помилка сервера' })
@@ -163,6 +237,7 @@ app.get('/api/banners', (req: Request, res: Response) => {
     res.json(rows)
   })
 })
+
 app.get('/api/status', (req: Request, res: Response) => {
   db.all('SELECT * FROM settings', [], (err, rows: any[]) => {
     if (err || !rows) {

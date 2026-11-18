@@ -22,12 +22,11 @@ const translateText = async (text: string, targetLang: string) => {
 };
 
 const translateToAll = async (text: string) => {
-  // Перекладаємо паралельно на всі 4 мови
   const [uk, cz, en, ru] = await Promise.all([
     translateText(text, 'uk'),
-    translateText(text, 'cs'), // для чеської код 'cs'
+    translateText(text, 'cs'),
     translateText(text, 'en'),
-    translateText(text, 'ru')  // російська
+    translateText(text, 'ru')
   ]);
   return JSON.stringify({ uk, cz, en, ru });
 };
@@ -89,7 +88,7 @@ const categoryWizard = new Scenes.WizardScene(
     return ctx.wizard.next()
   },
   async (ctx: any) => {
-    if (ctx.callbackQuery) { await ctx.answerCbQuery(); return ctx.scene.leave() }
+    if (ctx.callbackQuery) { await ctx.answerCbQuery().catch(() => {}); return ctx.scene.leave() }
     if (!ctx.message?.text) return
     
     await ctx.reply('⏳ Перекладаю назву...');
@@ -127,7 +126,7 @@ const productWizard = new Scenes.WizardScene(
     return ctx.wizard.next()
   },
   async (ctx: any) => {
-    if (ctx.callbackQuery) { await ctx.answerCbQuery(); return ctx.scene.leave() }
+    if (ctx.callbackQuery) { await ctx.answerCbQuery().catch(() => {}); return ctx.scene.leave() }
     if (!ctx.message?.text) return
     
     await ctx.reply('⏳ Перекладаю назву...');
@@ -146,7 +145,7 @@ const productWizard = new Scenes.WizardScene(
   },
   async (ctx: any) => {
     if (ctx.callbackQuery && ctx.callbackQuery.data.startsWith('cat_')) {
-      await ctx.answerCbQuery()
+      await ctx.answerCbQuery().catch(() => {})
       const catId = ctx.callbackQuery.data.replace('cat_', '')
       const cats = await getCategories()
       const selected = cats.find(c => c.id === Number(catId))
@@ -179,7 +178,7 @@ const addonWizard = new Scenes.WizardScene(
     return ctx.wizard.next()
   },
   async (ctx: any) => {
-    if (ctx.callbackQuery) { await ctx.answerCbQuery(); return ctx.scene.leave() }
+    if (ctx.callbackQuery) { await ctx.answerCbQuery().catch(() => {}); return ctx.scene.leave() }
     if (!ctx.message?.text) return
     
     await ctx.reply('⏳ Перекладаю назву...');
@@ -217,7 +216,7 @@ const bannerWizard = new Scenes.WizardScene(
     return ctx.wizard.next()
   },
   async (ctx: any) => {
-    if (ctx.callbackQuery) { await ctx.answerCbQuery(); return ctx.scene.leave() }
+    if (ctx.callbackQuery) { await ctx.answerCbQuery().catch(() => {}); return ctx.scene.leave() }
     if (!ctx.message?.text) return
     
     await ctx.reply('⏳ Перекладаю назву...');
@@ -257,6 +256,7 @@ const sendAdminMenu = async (ctx: any) => {
   
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback(toggleBtnText, 'toggle_shop_status'), Markup.button.callback('✏️ Текст паузи', 'edit_closed_msg')],
+    [Markup.button.callback('🧾 Перевірити фактуру', 'check_invoice_prompt')],
     [Markup.button.callback('➕ Категорію', 'add_cat_prompt'), Markup.button.callback('➕ Товар', 'menu_add_product')],
     [Markup.button.callback('➕ Додаток', 'menu_add_addon'), Markup.button.callback('➕ Банер', 'menu_add_banner')],
     [Markup.button.callback('📁 Категорії', 'menu_cats_manage'), Markup.button.callback('📦 Товари', 'menu_cats_list')],
@@ -271,17 +271,17 @@ const sendAdminMenu = async (ctx: any) => {
 bot.command('admin', sendAdminMenu)
 bot.command('start', (ctx) => ctx.reply('Напиши /admin'))
 
-bot.action('admin_home', async (ctx: any) => { await ctx.answerCbQuery(); await sendAdminMenu(ctx) })
+bot.action('admin_home', async (ctx: any) => { await ctx.answerCbQuery().catch(() => {}); await sendAdminMenu(ctx) })
 
 bot.action('toggle_shop_status', async (ctx: any) => {
   const { isOpen } = await getShopSettings()
   await setSetting('is_shop_open', (!isOpen).toString())
-  await ctx.answerCbQuery(!isOpen ? '🟢 Магазин відкрито!' : '🔴 Магазин поставлено на паузу!')
+  await ctx.answerCbQuery(!isOpen ? '🟢 Магазин відкрито!' : '🔴 Магазин поставлено на паузу!').catch(() => {})
   await sendAdminMenu(ctx)
 })
 
 bot.action('edit_closed_msg', async (ctx: any) => {
-  await ctx.answerCbQuery()
+  await ctx.answerCbQuery().catch(() => {})
   ctx.session ??= {}
   ctx.session.editState = { type: 'settings', id: 0, field: 'closed_message' }
   await ctx.reply('✍️ Введи новий текст повідомлення для клієнтів, коли сайт на паузі (на будь-якій мові, я перекладу на всі 4):', {
@@ -289,13 +289,26 @@ bot.action('edit_closed_msg', async (ctx: any) => {
   })
 })
 
-bot.action('add_cat_prompt', async (ctx: any) => { await ctx.answerCbQuery(); return ctx.scene.enter('add-category-scene') })
-bot.action('menu_add_product', async (ctx: any) => { await ctx.answerCbQuery(); return ctx.scene.enter('add-product-scene') })
-bot.action('menu_add_addon', async (ctx: any) => { await ctx.answerCbQuery(); return ctx.scene.enter('add-addon-scene') })
-bot.action('menu_add_banner', async (ctx: any) => { await ctx.answerCbQuery(); return ctx.scene.enter('add-banner-scene') })
+bot.action('check_invoice_prompt', async (ctx: any) => {
+  await ctx.answerCbQuery().catch(() => {})
+  ctx.session ??= {}
+  ctx.session.editState = { type: 'invoice_check', id: 0, field: 'search' }
+  await ctx.reply(
+    '🔍 Введи <b>номер фактури</b> (наприклад, <code>ASF-2026-12345</code>) або <b>код перевірки</b> (наприклад, <code>A1B2C3D4E5F6</code>):',
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([[Markup.button.callback('❌ Скасувати', 'admin_home')]]),
+    }
+  )
+})
+
+bot.action('add_cat_prompt', async (ctx: any) => { await ctx.answerCbQuery().catch(() => {}); return ctx.scene.enter('add-category-scene') })
+bot.action('menu_add_product', async (ctx: any) => { await ctx.answerCbQuery().catch(() => {}); return ctx.scene.enter('add-product-scene') })
+bot.action('menu_add_addon', async (ctx: any) => { await ctx.answerCbQuery().catch(() => {}); return ctx.scene.enter('add-addon-scene') })
+bot.action('menu_add_banner', async (ctx: any) => { await ctx.answerCbQuery().catch(() => {}); return ctx.scene.enter('add-banner-scene') })
 
 bot.action('menu_cats_manage', async (ctx: any) => {
-  await ctx.answerCbQuery()
+  await ctx.answerCbQuery().catch(() => {})
   const categories = await getCategories()
   if (categories.length === 0) return ctx.editMessageText('Поки немає категорій.', Markup.inlineKeyboard([[Markup.button.callback('🔙 Назад', 'admin_home')]]))
   await ctx.deleteMessage().catch(() => {})
@@ -309,7 +322,7 @@ bot.action(/^delcat_(\d+)$/, async (ctx: any) => {
   const catId = ctx.match[1];
 
   db.get('SELECT name FROM categories WHERE id = ?', [catId], (err: any, row: any) => {
-    if (err || !row) return ctx.answerCbQuery('❌ Помилка: категорію не знайдено');
+    if (err || !row) return ctx.answerCbQuery('❌ Помилка: категорію не знайдено').catch(() => {});
     
     const catName = row.name;
 
@@ -318,7 +331,7 @@ bot.action(/^delcat_(\d+)$/, async (ctx: any) => {
       
       db.run('DELETE FROM categories WHERE id = ?', [catId], async (err: any) => {
         if (!err) { 
-          await ctx.answerCbQuery('✅ Категорію та її товари видалено!'); 
+          await ctx.answerCbQuery('✅ Категорію та її товари видалено!').catch(() => {}); 
           await ctx.editMessageCaption(`❌ <i>Категорію та всі її товари видалено.</i>`, { parse_mode: 'HTML' }).catch(() => {}) 
         }
       });
@@ -327,7 +340,7 @@ bot.action(/^delcat_(\d+)$/, async (ctx: any) => {
 })
 
 bot.action('menu_cats_list', async (ctx: any) => {
-  await ctx.answerCbQuery()
+  await ctx.answerCbQuery().catch(() => {})
   const categories = await getCategories()
   if (categories.length === 0) return ctx.editMessageText('Категорій немає.', Markup.inlineKeyboard([[Markup.button.callback('🔙 Назад', 'admin_home')]]))
   const buttons = categories.map(c => [Markup.button.callback(`📁 ${getUaName(c.name)}`, `view_cat_${c.id}`)])
@@ -345,7 +358,7 @@ bot.action(/^view_cat_(\d+)$/, async (ctx: any) => {
   
   await ctx.reply(`📦 Завантажую товари з <b>${getUaName(selected.name)}</b>...`, { parse_mode: 'HTML' })
   for (const p of products) {
-    const isAvail = p.is_available !== 0 // якщо 1 або null — в наявності
+    const isAvail = p.is_available !== 0
     const statusText = isAvail ? '🟢 В наявності' : '🔴 Немає в наявності'
     const toggleBtnText = isAvail ? '🚫 Позначити: Немає' : '✅ Позначити: В наявності'
 
@@ -361,7 +374,7 @@ bot.action(/^view_cat_(\d+)$/, async (ctx: any) => {
 })
 
 bot.action('menu_addons_list', async (ctx: any) => {
-  await ctx.answerCbQuery()
+  await ctx.answerCbQuery().catch(() => {})
   const addons = await getAddons()
   if (addons.length === 0) return ctx.editMessageText('🎁 Додатків немає.', Markup.inlineKeyboard([[Markup.button.callback('🔙 Назад', 'admin_home')]]))
   await ctx.deleteMessage().catch(() => {})
@@ -375,7 +388,7 @@ bot.action('menu_addons_list', async (ctx: any) => {
 })
 
 bot.action('menu_banners_list', async (ctx: any) => {
-  await ctx.answerCbQuery()
+  await ctx.answerCbQuery().catch(() => {})
   const banners = await getBanners()
   if (banners.length === 0) return ctx.editMessageText('🖼 Банерів немає.', Markup.inlineKeyboard([[Markup.button.callback('🔙 Назад', 'admin_home')]]))
   await ctx.deleteMessage().catch(() => {})
@@ -390,7 +403,7 @@ bot.action('menu_banners_list', async (ctx: any) => {
 
 bot.action(/^edit_(product|addon|banner)_(\d+)$/, async (ctx: any) => {
   const type = ctx.match[1], id = ctx.match[2]
-  await ctx.answerCbQuery()
+  await ctx.answerCbQuery().catch(() => {})
   const buttons = type === 'banner' ? [[Markup.button.callback('Заголовок', `set_edit_${type}_${id}_title`)]] : [[Markup.button.callback('Назву', `set_edit_${type}_${id}_name`), Markup.button.callback('Ціну', `set_edit_${type}_${id}_price`)]]
   if (type === 'product') buttons.push([Markup.button.callback('Категорію', `set_edit_${type}_${id}_category`)])
   buttons.push([Markup.button.callback('Фотографію', `set_edit_${type}_${id}_image`)], [Markup.button.callback('🔙 Скасувати', 'admin_home')])
@@ -399,7 +412,7 @@ bot.action(/^edit_(product|addon|banner)_(\d+)$/, async (ctx: any) => {
 
 bot.action(/^set_edit_(product|addon|banner)_(\d+)_(.+)$/, async (ctx: any) => {
   const type = ctx.match[1], id = Number(ctx.match[2]), field = ctx.match[3]
-  await ctx.answerCbQuery()
+  await ctx.answerCbQuery().catch(() => {})
   ctx.session ??= {}; ctx.session.editState = { type, id, field }
   if (field === 'name' || field === 'title') await ctx.reply('✍️ Введи новий текст (на будь-якій мові):')
   if (field === 'price') await ctx.reply('💵 Введи нову ЦІНУ (цифри):')
@@ -416,7 +429,7 @@ bot.action(/^save_edit_cat_(\d+)_(.+)$/, async (ctx: any) => {
   const cats = await getCategories(); const selected = cats.find(c => c.id === catId);
   if (selected) {
     await updateItemField('products', id, 'category', selected.name)
-    await ctx.answerCbQuery('Оновлено!'); await ctx.editMessageText(`✅ Категорію змінено на <b>${getUaName(selected.name)}</b>.`, { parse_mode: 'HTML' })
+    await ctx.answerCbQuery('Оновлено!').catch(() => {}); await ctx.editMessageText(`✅ Категорію змінено на <b>${getUaName(selected.name)}</b>.`, { parse_mode: 'HTML' })
   }
   ctx.session.editState = null
 })
@@ -424,7 +437,7 @@ bot.action(/^save_edit_cat_(\d+)_(.+)$/, async (ctx: any) => {
 bot.action(/^delete_(product|addon|banner)_(\d+)$/, async (ctx: any) => {
   const table = ctx.match[1] === 'product' ? 'products' : ctx.match[1] === 'addon' ? 'addons' : 'banners'
   db.run(`DELETE FROM ${table} WHERE id = ?`, [ctx.match[2]], async (err) => {
-    if (!err) { await ctx.answerCbQuery('✅ Видалено!'); await ctx.editMessageCaption(`❌ <i>Видалено.</i>`, { parse_mode: 'HTML' }).catch(() => {}) }
+    if (!err) { await ctx.answerCbQuery('✅ Видалено!').catch(() => {}); await ctx.editMessageCaption(`❌ <i>Видалено.</i>`, { parse_mode: 'HTML' }).catch(() => {}) }
   })
 })
 
@@ -459,6 +472,50 @@ bot.on('text', async (ctx: any) => {
   if (ctx.message.text.trim().startsWith('/')) return
   if (ctx.session?.editState) {
     const { type, id, field } = ctx.session.editState
+
+    if (type === 'invoice_check') {
+      const queryText = ctx.message.text.trim().toUpperCase()
+      db.get(
+        'SELECT * FROM invoices WHERE invoice_number = ? OR verification_hash = ?',
+        [queryText, queryText],
+        async (err: any, inv: any) => {
+          ctx.session.editState = null
+          if (err || !inv) {
+            return ctx.reply(
+              '🚨 <b>УВАГА! Фактуру не знайдено в базі даних!</b>\nМожливо, це підробка або помилка в номері.',
+              { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('🔙 В меню', 'admin_home')]]) }
+            )
+          }
+
+          const items = JSON.parse(inv.items_json || '[]')
+          const itemsStr = items.map((i: any) => `• ${i.name} (${i.quantity} шт. — ${i.price * i.quantity} Kč)`).join('\n')
+          const statusBadge =
+            inv.payment_status === 'paid'
+              ? '🟢 <b>ОПЛАЧЕНО (Stripe)</b>'
+              : inv.payment_status === 'pending_cash'
+              ? '🟡 <b>Оплата готівкою при отриманні</b>'
+              : '🔴 <b>НЕ ОПЛАЧЕНО (замовлення створено, але платіж не завершено)</b>'
+
+          const replyText =
+            `✅ <b>ОРИГІНАЛЬНА ФАКТУРА ПІДТВЕРДЖЕНА</b>\n\n` +
+            `🧾 Номер: <code>${inv.invoice_number}</code>\n` +
+            `🔐 Код: <code>${inv.verification_hash}</code>\n` +
+            `💳 Статус: ${statusBadge}\n` +
+            `💰 Сума: <b>${inv.total_price} Kč</b> (доставка: ${inv.delivery_cost} Kč)\n\n` +
+            `👤 Клієнт: ${inv.client_name}\n` +
+            `📞 Телефон: ${inv.client_phone}\n` +
+            `📧 Email: ${inv.client_email || '—'}\n` +
+            `📅 Дата: ${inv.created_at}\n\n` +
+            `🛍 <b>Склад замовлення:</b>\n${itemsStr}`
+
+          return ctx.reply(replyText, {
+            parse_mode: 'HTML',
+            ...Markup.inlineKeyboard([[Markup.button.callback('🔙 В меню', 'admin_home')]]),
+          })
+        }
+      )
+      return
+    }
 
     if (type === 'settings' && field === 'closed_message') {
       await ctx.reply('⏳ Перекладаю текст заглушки на 4 мови...')
@@ -498,9 +555,11 @@ bot.on('photo', async (ctx: any) => {
 db.run("DELETE FROM products WHERE category NOT IN (SELECT name FROM categories)", (err) => {
   if (!err) console.log("🧹 Старі квіти без категорій успішно видалено!");
 });
+
 bot.catch((err: any, ctx: any) => {
   console.error(`⚠️ Помилка Telegraf для ${ctx.updateType}:`, err.message || err);
 });
+
 export const launchBot = () => { bot.launch(); console.log('👑 Адмін-панель (Автопереклад) запущена!') }
 process.once('SIGINT', () => bot.stop('SIGINT'))
 process.once('SIGTERM', () => bot.stop('SIGTERM'))
