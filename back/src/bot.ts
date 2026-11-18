@@ -41,6 +41,7 @@ const getUaName = (str: string) => {
 // ==========================================
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`);
+  db.run(`ALTER TABLE products ADD COLUMN is_available INTEGER DEFAULT 1`, () => {});
   const defaultMsg = JSON.stringify({
     uk: 'Наразі всі святкові букети розброньовані. Незабаром ми знову відкриємо прийом замовлень!',
     cz: 'Momentálně jsou všechny sváteční kytice rezervované. Brzy opět otevřeme příjem objednávek!',
@@ -335,7 +336,7 @@ bot.action('menu_cats_list', async (ctx: any) => {
 })
 
 bot.action(/^view_cat_(\d+)$/, async (ctx: any) => {
-  await ctx.answerCbQuery()
+  await ctx.answerCbQuery().catch(() => {})
   const cats = await getCategories()
   const selected = cats.find(c => c.id === Number(ctx.match[1]))
   if (!selected) return
@@ -344,9 +345,16 @@ bot.action(/^view_cat_(\d+)$/, async (ctx: any) => {
   
   await ctx.reply(`📦 Завантажую товари з <b>${getUaName(selected.name)}</b>...`, { parse_mode: 'HTML' })
   for (const p of products) {
+    const isAvail = p.is_available !== 0 // якщо 1 або null — в наявності
+    const statusText = isAvail ? '🟢 В наявності' : '🔴 Немає в наявності'
+    const toggleBtnText = isAvail ? '🚫 Позначити: Немає' : '✅ Позначити: В наявності'
+
     await ctx.replyWithPhoto(p.image, {
-      caption: `🌸 <b>${getUaName(p.name)}</b>\n💵 Ціна: ${p.price} Kč`, parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([[Markup.button.callback('✏️ Редагувати', `edit_product_${p.id}`), Markup.button.callback('❌ Видалити', `delete_product_${p.id}`)]])
+      caption: `🌸 <b>${getUaName(p.name)}</b>\n💵 Ціна: ${p.price} Kč\n📦 Статус: <b>${statusText}</b>`, parse_mode: 'HTML',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback(toggleBtnText, `toggle_avail_${p.id}`)],
+        [Markup.button.callback('✏️ Редагувати', `edit_product_${p.id}`), Markup.button.callback('❌ Видалити', `delete_product_${p.id}`)]
+      ])
     })
   }
   await ctx.reply('👆 Усі товари категорії.', Markup.inlineKeyboard([[Markup.button.callback('🔙 В меню', 'admin_home')]]))
@@ -420,6 +428,33 @@ bot.action(/^delete_(product|addon|banner)_(\d+)$/, async (ctx: any) => {
   })
 })
 
+bot.action(/^toggle_avail_(\d+)$/, async (ctx: any) => {
+  const prodId = Number(ctx.match[1])
+  db.get('SELECT * FROM products WHERE id = ?', [prodId], async (err: any, p: any) => {
+    if (err || !p) return ctx.answerCbQuery('❌ Товар не знайдено').catch(() => {})
+    
+    const currentAvail = p.is_available !== 0
+    const newAvail = currentAvail ? 0 : 1
+
+    await updateItemField('products', prodId, 'is_available', newAvail)
+    await ctx.answerCbQuery(newAvail ? '✅ Товар знову в наявності!' : '🚫 Позначено як «Немає в наявності»').catch(() => {})
+
+    const statusText = newAvail ? '🟢 В наявності' : '🔴 Немає в наявності'
+    const toggleBtnText = newAvail ? '🚫 Позначити: Немає' : '✅ Позначити: В наявності'
+
+    await ctx.editMessageCaption(
+      `🌸 <b>${getUaName(p.name)}</b>\n💵 Ціна: ${p.price} Kč\n📦 Статус: <b>${statusText}</b>`,
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback(toggleBtnText, `toggle_avail_${p.id}`)],
+          [Markup.button.callback('✏️ Редагувати', `edit_product_${p.id}`), Markup.button.callback('❌ Видалити', `delete_product_${p.id}`)]
+        ])
+      }
+    ).catch(() => {})
+  })
+})
+
 bot.on('text', async (ctx: any) => {
   if (ctx.message.text.trim().startsWith('/')) return
   if (ctx.session?.editState) {
@@ -463,7 +498,9 @@ bot.on('photo', async (ctx: any) => {
 db.run("DELETE FROM products WHERE category NOT IN (SELECT name FROM categories)", (err) => {
   if (!err) console.log("🧹 Старі квіти без категорій успішно видалено!");
 });
-
+bot.catch((err: any, ctx: any) => {
+  console.error(`⚠️ Помилка Telegraf для ${ctx.updateType}:`, err.message || err);
+});
 export const launchBot = () => { bot.launch(); console.log('👑 Адмін-панель (Автопереклад) запущена!') }
 process.once('SIGINT', () => bot.stop('SIGINT'))
 process.once('SIGTERM', () => bot.stop('SIGTERM'))

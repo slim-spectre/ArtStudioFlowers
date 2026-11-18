@@ -9,10 +9,19 @@ import { getLocalizedName } from '../utils/localise'
 const MIN_LIMIT = 0
 const MAX_LIMIT = 20000
 
+const outOfStockLabels: Record<string, string> = {
+  cz: 'Vyprodáno',
+  ua: 'Немає в наявності',
+  en: 'Out of stock',
+  ru: 'Нет в наличии',
+}
+
 export const Catalog = ({ selectedCategory = null, onResetCategory }: CatalogProps) => {
   const [minPrice, setMinPrice] = useState<number>(0)
   const [maxPrice, setMaxPrice] = useState<number>(20000)
-  const [items, setItems] = useState<{ id: number; name: any; price: number; image: string; category: any }[]>([])
+  const [items, setItems] = useState<
+    { id: number; name: any; price: number; image: string; category: any; is_available?: number }[]
+  >([])
 
   useEffect(() => {
     fetch('https://api.artstudioflowers.cz/api/products')
@@ -26,6 +35,7 @@ export const Catalog = ({ selectedCategory = null, onResetCategory }: CatalogPro
   const { addToCart } = useCart()
 
   const handleBuy = (product: (typeof items)[0]) => {
+    if (product.is_available === 0) return
     addToCart({
       id: product.id,
       name: getLocalizedName(product.name, language),
@@ -105,7 +115,7 @@ export const Catalog = ({ selectedCategory = null, onResetCategory }: CatalogPro
 
   const filteredProducts = items.filter((item) => {
     const matchesPrice = item.price >= minPrice && item.price <= maxPrice
-    const itemCategoryLocalized = getLocalizedName(item.category, language);
+    const itemCategoryLocalized = getLocalizedName(item.category, language)
     const matchesCategory = selectedCategory ? itemCategoryLocalized === selectedCategory : true
 
     return matchesPrice && matchesCategory
@@ -205,32 +215,56 @@ export const Catalog = ({ selectedCategory = null, onResetCategory }: CatalogPro
 
       {filteredProducts.length > 0 ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 w-full">
-          {filteredProducts.map((item) => (
-            <div key={item.id} className="bg-[#F9F9FB] flex flex-col justify-between overflow-hidden">
-              <div className="w-full aspect-[4/5] overflow-hidden">
-                <img
-                  src={`https://api.artstudioflowers.cz/api/image/${item.image}`}
-                  alt={item.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
+          {filteredProducts.map((item) => {
+            const isOutOfStock = item.is_available === 0
+            const badgeText = outOfStockLabels[language] || outOfStockLabels.cz
 
-              <div className="p-2 flex flex-col items-center">
-                <h3 className="text-[#F1569E] text-[16px] font-serif mb-0.5">
-                  {getLocalizedName(item.name, language)}
-                </h3>
-                <p className="text-[#AA6181] text-[16px] font-serif mb-2">{item.price} Kč</p>
-              </div>
+            return (
+              <div key={item.id} className="bg-[#F9F9FB] flex flex-col justify-between overflow-hidden">
+                <div className="w-full aspect-[4/5] overflow-hidden relative">
+                  <img
+                    src={`https://api.artstudioflowers.cz/api/image/${item.image}`}
+                    alt={getLocalizedName(item.name, language)}
+                    className={`w-full h-full object-cover transition-all duration-300 ${
+                      isOutOfStock ? 'opacity-65 grayscale-[35%]' : ''
+                    }`}
+                  />
 
-              <button
-                onClick={() => handleBuy(item)}
-                className="w-full bg-[#F1569E] text-white py-2 min-h-[50px] flex items-center justify-center gap-1.5 text-[12px] font-serif hover:opacity-90 transition-opacity cursor-pointer"
-              >
-                <img src="/cart.png" alt="" className="w-3.5 h-3.5 object-contain brightness-0 invert" />
-                {t.buy}
-              </button>
-            </div>
-          ))}
+                  {isOutOfStock && (
+                    <div className="absolute inset-0 flex items-center justify-center p-2 bg-black/15">
+                      <span className="bg-white/95 backdrop-blur-xs text-[#AA6181] border border-[#F1569E] px-3 py-1.5 text-[11px] md:text-[12px] font-serif uppercase tracking-wider shadow-sm">
+                        {badgeText}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-2 flex flex-col items-center">
+                  <h3
+                    className={`text-[16px] font-serif mb-0.5 ${isOutOfStock ? 'text-[#AA6181]/70' : 'text-[#F1569E]'}`}
+                  >
+                    {getLocalizedName(item.name, language)}
+                  </h3>
+                  <p className="text-[#AA6181] text-[16px] font-serif mb-2">{item.price} Kč</p>
+                </div>
+
+                <button
+                  onClick={() => handleBuy(item)}
+                  disabled={isOutOfStock}
+                  className={`w-full py-2 min-h-[50px] flex items-center justify-center gap-1.5 text-[12px] font-serif transition-opacity ${
+                    isOutOfStock
+                      ? 'bg-[#E5D3DC] text-[#AA6181] cursor-not-allowed'
+                      : 'bg-[#F1569E] text-white hover:opacity-90 cursor-pointer'
+                  }`}
+                >
+                  {!isOutOfStock && (
+                    <img src="/cart.png" alt="" className="w-3.5 h-3.5 object-contain brightness-0 invert" />
+                  )}
+                  {isOutOfStock ? badgeText : t.buy}
+                </button>
+              </div>
+            )
+          })}
         </div>
       ) : (
         <p className="text-[#AA6181] text-[13px] font-serif my-8">{t.notFound}</p>
