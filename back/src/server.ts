@@ -163,6 +163,25 @@ app.get('/api/banners', (req: Request, res: Response) => {
     res.json(rows)
   })
 })
+app.get('/api/status', (req: Request, res: Response) => {
+  db.all('SELECT * FROM settings', [], (err, rows: any[]) => {
+    if (err || !rows) {
+      return res.json({ isOpen: true, closedMessage: {} })
+    }
+    const isOpenRow = rows.find((r) => r.key === 'is_shop_open')
+    const msgRow = rows.find((r) => r.key === 'closed_message')
+
+    let parsedMessage = {}
+    try {
+      parsedMessage = msgRow ? JSON.parse(msgRow.value) : {}
+    } catch {}
+
+    res.json({
+      isOpen: isOpenRow ? isOpenRow.value === 'true' : true,
+      closedMessage: parsedMessage,
+    })
+  })
+})
 
 app.get('/api/image/:fileId', async (req: Request, res: Response): Promise<void> => {
   try {

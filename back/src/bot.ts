@@ -1,7 +1,8 @@
 import { Telegraf, Scenes, session, Markup } from 'telegraf'
 import dotenv from 'dotenv'
 import db from './db.js'
-
+import * as translateModule from 'google-translate-api-x';
+const translate = (translateModule as any).default || (translateModule as any).translate || translateModule;
 dotenv.config()
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
@@ -12,24 +13,23 @@ if (!BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN не задано в .env')
 // ==========================================
 const translateText = async (text: string, targetLang: string) => {
   try {
-    // Використовуємо відкритий безкоштовний ендпоінт Google Translate
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    // Google повертає масив, де перший елемент — це шматки перекладу
-    return data[0].map((item: any) => item[0]).join('');
+    const res: any = await translate(text, { to: targetLang });
+    return res.text;
   } catch (error) {
-    console.error('Помилка перекладу:', error);
-    return text; // Якщо щось пішло не так, залишаємо оригінальний текст
+    console.error(`Помилка перекладу на ${targetLang}:`, error);
+    return text;
   }
 };
 
 const translateToAll = async (text: string) => {
-  // Код чеської в Google це 'cs', але для фронтенду ми зберігаємо як 'cz'
-  const uk = await translateText(text, 'uk');
-  const cz = await translateText(text, 'cs'); 
-  const en = await translateText(text, 'en');
-  return JSON.stringify({ uk, cz, en });
+  // Перекладаємо паралельно на всі 4 мови
+  const [uk, cz, en, ru] = await Promise.all([
+    translateText(text, 'uk'),
+    translateText(text, 'cs'), // для чеської код 'cs'
+    translateText(text, 'en'),
+    translateText(text, 'ru')  // російська
+  ]);
+  return JSON.stringify({ uk, cz, en, ru });
 };
 
 const getUaName = (str: string) => {
@@ -37,8 +37,40 @@ const getUaName = (str: string) => {
 }
 
 // ==========================================
-// 1. РОБОТА З БАЗОЮ ДАНИХ
+// 1. РОБОТА З БАЗОЮ ДАНИХ ТА НАЛАШТУВАННЯМИ
 // ==========================================
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`);
+  const defaultMsg = JSON.stringify({
+    uk: 'Наразі всі святкові букети розброньовані. Незабаром ми знову відкриємо прийом замовлень!',
+    cz: 'Momentálně jsou všechny sváteční kytice rezervované. Brzy opět otevřeme příjem objednávek!',
+    en: 'All holiday bouquets are currently booked. We will reopen orders soon!',
+    ru: 'На данный момент все праздничные букеты забронированы. Скоро мы снова откроем прием заказов!'
+  });
+  db.run(`INSERT OR IGNORE INTO settings (key, value) VALUES ('is_shop_open', 'true')`);
+  db.run(`INSERT OR IGNORE INTO settings (key, value) VALUES ('closed_message', ?)`, [defaultMsg]);
+});
+
+const getShopSettings = (): Promise<{ isOpen: boolean; closedMessage: string }> => {
+  return new Promise((res) => {
+    db.all('SELECT * FROM settings', [], (err, rows: any[]) => {
+      if (err || !rows) return res({ isOpen: true, closedMessage: '{}' });
+      const isOpenRow = rows.find(r => r.key === 'is_shop_open');
+      const msgRow = rows.find(r => r.key === 'closed_message');
+      res({
+        isOpen: isOpenRow ? isOpenRow.value === 'true' : true,
+        closedMessage: msgRow ? msgRow.value : '{}'
+      });
+    });
+  });
+};
+
+const setSetting = (key: string, value: string): Promise<void> => {
+  return new Promise((res, rej) => {
+    db.run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`, [key, value], (err) => err ? rej(err) : res());
+  });
+};
+
 const getCategories = (): Promise<any[]> => new Promise((res, rej) => db.all('SELECT * FROM categories ORDER BY id DESC', [], (err, rows) => err ? rej(err) : res(rows)))
 const getProductsByCategory = (categoryJson: string): Promise<any[]> => new Promise((res, rej) => db.all('SELECT * FROM products WHERE category = ? ORDER BY id DESC', [categoryJson], (err, rows) => err ? rej(err) : res(rows)))
 const getAddons = (): Promise<any[]> => new Promise((res, rej) => db.all('SELECT * FROM addons ORDER BY id DESC', [], (err, rows) => err ? rej(err) : res(rows)))
@@ -51,7 +83,7 @@ const updateItemField = (table: string, id: number, field: string, value: any): 
 const categoryWizard = new Scenes.WizardScene(
   'add-category-scene',
   async (ctx: any) => {
-    ctx.scene.state = {}
+    ctx.scene.state = {} as any
     await ctx.reply('📁 <b>Крок 1/2.</b> Введи НАЗВУ категорії (на будь-якій мові, я сам перекладу):', { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('❌ Скасувати', 'admin_home')]]) })
     return ctx.wizard.next()
   },
@@ -89,7 +121,7 @@ const productWizard = new Scenes.WizardScene(
       await ctx.reply('⚠️ Спочатку створи категорію.', { ...Markup.inlineKeyboard([[Markup.button.callback('🔙 В меню', 'admin_home')]]) })
       return ctx.scene.leave()
     }
-    ctx.scene.state = {}
+    ctx.scene.state = {} as any
     await ctx.reply('🌸 <b>Крок 1/4.</b> Введи НАЗВУ товару (на будь-якій мові):', { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('❌ Скасувати', 'admin_home')]]) })
     return ctx.wizard.next()
   },
@@ -141,7 +173,7 @@ const productWizard = new Scenes.WizardScene(
 const addonWizard = new Scenes.WizardScene(
   'add-addon-scene',
   async (ctx: any) => {
-    ctx.scene.state = {}
+    ctx.scene.state = {} as any
     await ctx.reply('🎁 <b>Крок 1/3.</b> Введи НАЗВУ додатку (на будь-якій мові):', { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('❌ Скасувати', 'admin_home')]]) })
     return ctx.wizard.next()
   },
@@ -179,7 +211,7 @@ const addonWizard = new Scenes.WizardScene(
 const bannerWizard = new Scenes.WizardScene(
   'add-banner-scene',
   async (ctx: any) => {
-    ctx.scene.state = {}
+    ctx.scene.state = {} as any
     await ctx.reply('🖼 <b>Крок 1/2.</b> Введи ЗАГОЛОВОК банера (на будь-якій мові):', { parse_mode: 'HTML', ...Markup.inlineKeyboard([[Markup.button.callback('❌ Скасувати', 'admin_home')]]) })
     return ctx.wizard.next()
   },
@@ -215,8 +247,15 @@ bot.use(stage.middleware())
 
 const sendAdminMenu = async (ctx: any) => {
   if (ctx.session) ctx.session.editState = null
-  const text = '👑 <b>ПАНЕЛЬ УПРАВЛІННЯ</b>\n\nОберіть дію:'
+  const { isOpen, closedMessage } = await getShopSettings()
+  
+  const statusBadge = isOpen ? '🟢 <b>ВІДКРИТО</b> (приймає замовлення)' : '🔴 <b>НА ПАУЗІ</b> (показується заглушка)'
+  const toggleBtnText = isOpen ? '🔴 Поставити на паузу' : '🟢 Відкрити магазин'
+
+  const text = `👑 <b>ПАНЕЛЬ УПРАВЛІННЯ</b>\n\nСтатус сайту: ${statusBadge}\nТекст заглушки: <i>«${getUaName(closedMessage)}»</i>\n\nОберіть дію:`
+  
   const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback(toggleBtnText, 'toggle_shop_status'), Markup.button.callback('✏️ Текст паузи', 'edit_closed_msg')],
     [Markup.button.callback('➕ Категорію', 'add_cat_prompt'), Markup.button.callback('➕ Товар', 'menu_add_product')],
     [Markup.button.callback('➕ Додаток', 'menu_add_addon'), Markup.button.callback('➕ Банер', 'menu_add_banner')],
     [Markup.button.callback('📁 Категорії', 'menu_cats_manage'), Markup.button.callback('📦 Товари', 'menu_cats_list')],
@@ -232,6 +271,23 @@ bot.command('admin', sendAdminMenu)
 bot.command('start', (ctx) => ctx.reply('Напиши /admin'))
 
 bot.action('admin_home', async (ctx: any) => { await ctx.answerCbQuery(); await sendAdminMenu(ctx) })
+
+bot.action('toggle_shop_status', async (ctx: any) => {
+  const { isOpen } = await getShopSettings()
+  await setSetting('is_shop_open', (!isOpen).toString())
+  await ctx.answerCbQuery(!isOpen ? '🟢 Магазин відкрито!' : '🔴 Магазин поставлено на паузу!')
+  await sendAdminMenu(ctx)
+})
+
+bot.action('edit_closed_msg', async (ctx: any) => {
+  await ctx.answerCbQuery()
+  ctx.session ??= {}
+  ctx.session.editState = { type: 'settings', id: 0, field: 'closed_message' }
+  await ctx.reply('✍️ Введи новий текст повідомлення для клієнтів, коли сайт на паузі (на будь-якій мові, я перекладу на всі 4):', {
+    ...Markup.inlineKeyboard([[Markup.button.callback('❌ Скасувати', 'admin_home')]])
+  })
+})
+
 bot.action('add_cat_prompt', async (ctx: any) => { await ctx.answerCbQuery(); return ctx.scene.enter('add-category-scene') })
 bot.action('menu_add_product', async (ctx: any) => { await ctx.answerCbQuery(); return ctx.scene.enter('add-product-scene') })
 bot.action('menu_add_addon', async (ctx: any) => { await ctx.answerCbQuery(); return ctx.scene.enter('add-addon-scene') })
@@ -249,9 +305,24 @@ bot.action('menu_cats_manage', async (ctx: any) => {
 })
 
 bot.action(/^delcat_(\d+)$/, async (ctx: any) => {
-  db.run('DELETE FROM categories WHERE id = ?', [ctx.match[1]], async (err) => {
-    if (!err) { await ctx.answerCbQuery('✅ Видалено!'); await ctx.editMessageCaption(`❌ <i>Видалено.</i>`, { parse_mode: 'HTML' }).catch(() => {}) }
-  })
+  const catId = ctx.match[1];
+
+  db.get('SELECT name FROM categories WHERE id = ?', [catId], (err: any, row: any) => {
+    if (err || !row) return ctx.answerCbQuery('❌ Помилка: категорію не знайдено');
+    
+    const catName = row.name;
+
+    db.run('DELETE FROM products WHERE category = ?', [catName], (err: any) => {
+      if (err) console.error('Помилка видалення товарів:', err);
+      
+      db.run('DELETE FROM categories WHERE id = ?', [catId], async (err: any) => {
+        if (!err) { 
+          await ctx.answerCbQuery('✅ Категорію та її товари видалено!'); 
+          await ctx.editMessageCaption(`❌ <i>Категорію та всі її товари видалено.</i>`, { parse_mode: 'HTML' }).catch(() => {}) 
+        }
+      });
+    });
+  });
 })
 
 bot.action('menu_cats_list', async (ctx: any) => {
@@ -353,6 +424,15 @@ bot.on('text', async (ctx: any) => {
   if (ctx.message.text.trim().startsWith('/')) return
   if (ctx.session?.editState) {
     const { type, id, field } = ctx.session.editState
+
+    if (type === 'settings' && field === 'closed_message') {
+      await ctx.reply('⏳ Перекладаю текст заглушки на 4 мови...')
+      const translated = await translateToAll(ctx.message.text.trim())
+      await setSetting('closed_message', translated)
+      ctx.session.editState = null
+      return ctx.reply('✅ Текст заглушки оновлено!', Markup.inlineKeyboard([[Markup.button.callback('🔙 В меню', 'admin_home')]]))
+    }
+
     const table = type === 'product' ? 'products' : type === 'addon' ? 'addons' : 'banners'
     if (field === 'price' && isNaN(Number(ctx.message.text))) return ctx.reply('❌ Ціна має бути числом.')
     
@@ -379,6 +459,10 @@ bot.on('photo', async (ctx: any) => {
     await ctx.reply('✅ Фотографію оновлено!', Markup.inlineKeyboard([[Markup.button.callback('🔙 В меню', 'admin_home')]]))
   }
 })
+
+db.run("DELETE FROM products WHERE category NOT IN (SELECT name FROM categories)", (err) => {
+  if (!err) console.log("🧹 Старі квіти без категорій успішно видалено!");
+});
 
 export const launchBot = () => { bot.launch(); console.log('👑 Адмін-панель (Автопереклад) запущена!') }
 process.once('SIGINT', () => bot.stop('SIGINT'))
