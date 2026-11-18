@@ -8,6 +8,7 @@ import { Footer } from '../Footer'
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useLanguage } from '../../context/LanguageContext'
+import type { Language } from '../../utils/translations'
 
 export const MainPage = () => {
   const location = useLocation()
@@ -21,14 +22,15 @@ export const MainPage = () => {
     closedMessage: {},
   })
 
-    useEffect(() => {
+  // Завантажуємо статус магазину (відкрито / на паузі)
+  useEffect(() => {
     fetch('https://api.artstudioflowers.cz/api/status')
       .then((res) => res.json())
       .then((data) => setShopStatus(data))
       .catch((err) => console.error('Помилка перевірки статусу:', err))
   }, [])
 
-  
+  // Блокуємо скрол сторінки, коли магазин на паузі
   useEffect(() => {
     if (!shopStatus.isOpen) {
       document.body.style.overflow = 'hidden'
@@ -66,32 +68,41 @@ export const MainPage = () => {
     document.getElementById('catalog')?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  
+  // Заголовки попапу під коди мов із LanguageContext ('ua' замість 'uk')
   const pauseTitles: Record<string, string> = {
     cz: 'Dočasně pozastaveno',
-    uk: 'Прийом замовлень призупинено',
+    ua: 'Прийом замовлень призупинено',
     en: 'Orders Temporarily Paused',
     ru: 'Прием заказов приостановлен',
   }
 
+  // Отримуємо правильний переклад тексту з бази (де українська збережена як 'uk')
+  const backendLangKey = language === 'ua' ? 'uk' : language
+  const localizedClosedMessage =
+    shopStatus.closedMessage[backendLangKey] ||
+    shopStatus.closedMessage['cz'] ||
+    shopStatus.closedMessage['uk']
+
   return (
     <div className="min-h-screen bg-[#E5E5E5] flex justify-center relative">
-      
+      {/* ПОПАП РЕЖИМУ ПАУЗИ (z-[9999] перекриває і Header) */}
       {!shopStatus.isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white border-2 border-[#F1569E] rounded-[4px] max-w-[400px] w-full p-6 md:p-8 text-center shadow-2xl">
+            {/* Перемикач мов прямо в попапі */}
             <div className="flex justify-center gap-2 mb-5">
-              {(['cz', 'uk', 'en', 'ru'] as const).map((lang) => (
+              {(['cz', 'ua', 'en', 'ru'] as Language[]).map((lang) => (
                 <button
                   key={lang}
-                  onClick={() => setLanguage(language)}
-                  className={`text-[11px] font-serif uppercase px-2 py-0.5 rounded-[2px] cursor-pointer transition-colors ${
+                  type="button"
+                  onClick={() => setLanguage(lang)}
+                  className={`text-[11px] font-serif uppercase px-2.5 py-1 rounded-[2px] cursor-pointer transition-colors ${
                     language === lang
                       ? 'bg-[#F1569E] text-white'
                       : 'text-[#AA6181] border border-[#AA6181]/30 hover:border-[#F1569E]'
                   }`}
                 >
-                  {lang === 'uk' ? 'ua' : lang}
+                  {lang}
                 </button>
               ))}
             </div>
@@ -103,9 +114,7 @@ export const MainPage = () => {
             </h2>
 
             <p className="text-[#AA6181] text-[14px] md:text-[15px] font-serif leading-relaxed">
-              {shopStatus.closedMessage[language] ||
-                shopStatus.closedMessage['cz'] ||
-                shopStatus.closedMessage['uk']}
+              {localizedClosedMessage}
             </p>
           </div>
         </div>
